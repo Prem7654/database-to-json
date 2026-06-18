@@ -339,7 +339,7 @@ https://shop-db.firebaseio.com/orders`;
       cp.innerHTML=copyIcon();
       cp.onclick=()=>navigator.clipboard.writeText(url).then(()=>{cp.innerHTML=checkIcon();toast('Copied URL #'+(i+1),'info');setTimeout(()=>cp.innerHTML=copyIcon(),1300);});
       const dl=document.createElement('button');dl.className='ib ib-dl';dl.innerHTML=dlIcon()+' DL';
-      dl.onclick=()=>{downloadOne(url);toast('Downloaded #'+(i+1),'success');};
+      dl.onclick=()=>{downloadOne(url).then(ok=>{if(ok)toast('Downloaded #'+(i+1),'success');});};
       act.append(cp,dl);li.append(cb,nb,tx,act);urlList.appendChild(li);});
     selectAll.checked=false;updateSel();}
 
@@ -361,14 +361,32 @@ https://shop-db.firebaseio.com/orders`;
 
   /* downloads */
   function safeName(s){try{const u=new URL(s);let n=u.hostname+u.pathname;n=n.replace(/\.json$/i,'').replace(/[<>:"/\\|?*]+/g,'_');return n+'.json';}catch(e){return 'firebase_'+Date.now()+'.json';}}
-  function downloadOne(url){const c=JSON.stringify({extracted_url:url},null,4);const b=new Blob([c],{type:'application/json'});
-    const o=URL.createObjectURL(b);const a=document.createElement('a');a.href=o;a.download=safeName(url);document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(o);}
+  async function downloadOne(url){
+    try{
+      const res=await fetch(url,{cache:'no-store'});
+      if(!res.ok)throw new Error('HTTP '+res.status);
+      const data=await res.json();
+      if(data===null){toast('Empty DB (null): '+safeName(url),'error');return false;}
+      const c=JSON.stringify(data,null,2);
+      const b=new Blob([c],{type:'application/json'});
+      const o=URL.createObjectURL(b);const a=document.createElement('a');a.href=o;a.download=safeName(url);document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(o);
+      return true;
+    }catch(e){
+      toast('Fetch failed: '+safeName(url)+' ('+e.message+')','error');
+      return false;
+    }}
 
-  function batchDownload(urls){if(!urls.length){toast('Nothing to download','error');return;}
+  async function batchDownload(urls){if(!urls.length){toast('Nothing to download','error');return;}
     progress.style.display='block';progressBar.style.width='0%';
-    toast('Downloading '+urls.length+' file'+(urls.length>1?'s':'')+'...','info');
-    urls.forEach((u,i)=>setTimeout(()=>{downloadOne(u);progressBar.style.width=((i+1)/urls.length*100)+'%';
-      if(i===urls.length-1)setTimeout(()=>{progress.style.display='none';toast('Done! '+urls.length+' file'+(urls.length>1?'s':'')+' downloaded','success');},500);},i*250));}
+    toast('Fetching '+urls.length+' database'+(urls.length>1?'s':'')+'...','info');
+    let ok=0;
+    for(let i=0;i<urls.length;i++){
+      if(await downloadOne(urls[i]))ok++;
+      progressBar.style.width=((i+1)/urls.length*100)+'%';
+      await new Promise(r=>setTimeout(r,200));
+    }
+    setTimeout(()=>{progress.style.display='none';
+      toast(ok+' of '+urls.length+' database'+(urls.length>1?'s':'')+' downloaded',ok?'success':'error');},450);}
   downloadAllBtn.addEventListener('click',()=>batchDownload(finalUrls));
   downloadSelBtn.addEventListener('click',()=>{
     const sel=[...urlList.querySelectorAll('li')].filter(li=>li.querySelector('.cbx').checked).map(li=>li.querySelector('.u-text').textContent);
